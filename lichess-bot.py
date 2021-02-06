@@ -100,13 +100,13 @@ def start(li, user_profile, engine_factory, config):
                 else:
                     try:
                         reason = "generic"
-                        challenge = config["challenge"]                         
+                        challenge = config["challenge"]
                         if not chlng.is_supported_variant(challenge["variants"]):
                             reason = "variant"
                         if not chlng.is_supported_time_control(challenge["time_controls"], challenge.get("max_increment", 180), challenge.get("min_increment", 0)):
                             reason = "timeControl"
                         if not chlng.is_supported_mode(challenge["modes"]):
-                            reason = "casual" if chlng.rated else "rated"                        
+                            reason = "casual" if chlng.rated else "rated"
                         if ( not challenge.get("accept_bot", False) ) and chlng.challenger_is_bot:
                             reason = "noBot"
                         if challenge.get("only_bot", False) and ( not chlng.challenger_is_bot ):
@@ -240,7 +240,7 @@ def play_game(li, game_id, control_queue, engine_factory, user_profile, config, 
                 game.state = upd
                 moves = upd["moves"].split()
                 if len(moves) > 0 and len(moves) != len(board.move_stack):
-                    board = update_board(board, moves[-1])
+                    board = update_board(game, board, moves[-1])
                 if not is_game_over(game) and is_engine_move(game, moves):
                     if config.get("fake_think_time") and len(moves) > 9:
                         delay = min(game.clock_initial, game.my_remaining_seconds()) * 0.015
@@ -387,7 +387,7 @@ def get_book_move(board, config):
         if move is not None:
             logger.info("Got move {} from book {}".format(move, book))
             return move
-        
+
     return None
 
 
@@ -401,7 +401,7 @@ def setup_board(game):
         board = VariantBoard()
     moves = game.state["moves"].split()
     for move in moves:
-        board = update_board(board, move)
+        board = update_board(game, board, move)
 
     return board
 
@@ -418,8 +418,13 @@ def is_game_over(game):
     return game.state["status"] != "started"
 
 
-def update_board(board, move):
+def update_board(game, board, move):
     uci_move = chess.Move.from_uci(move)
+    # NOTE: When "from position" variant, Lichess uses chess960 castling notation,
+    #       which breaks my engine, so here we convert to normal notation.
+    #       (cf. https://github.com/ornicar/scalachess/blob/dc9964e087bd4fe0c230ff8b1f553498ff5533ec/src/main/scala/format/UciDump.scala#L26)
+    if game.variant_name == "From Position":
+        uci_move = board._from_chess960(False, uci_move.from_square, uci_move.to_square, uci_move.promotion, uci_move.drop)
     if board.is_legal(uci_move):
         board.push(uci_move)
     else:
